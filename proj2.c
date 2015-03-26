@@ -6,39 +6,16 @@
 #include <math.h>
 #include <stdbool.h>
 
-// Hash //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#define hashSize 11
-#define bucketSize 2
-
-typedef struct {
-    int qtd;
-    int key[bucketSize];
-    int RRN[bucketSize];
-} typeBucket;
-
-FILE *hash;
-
-// B-tree /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#define HASHSIZE 11
+#define BUCKETSIZE 2
 
 #define MAXKEYS 4
 #define MINKEYS MAXKEYS/2
 #define NIL (-1)
-
-typedef struct {
-    int keycount; // number of keys in page
-    int key[MAXKEYS]; // the actual keys
-    int offset[MAXKEYS]; // rrn for the corresponding keys
-    int child[MAXKEYS+1]; // ptrs to rrns of descendants
-} BTPAGE;
-
 #define PAGESIZE sizeof(BTPAGE)
 
 extern int root; // rrn of root page
-FILE* btfd; // file descriptor of btree file
 extern int infd; // file descriptor of input file
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Declarações de estruturas e descritores de arquivos globais
 
@@ -55,25 +32,23 @@ struct ap2Struct {
 	char nomeCachorro[30];
 }; // Estrutura para o registro (tamanho fixo) do arquivo de cachorros (AP2)
 
-struct indice1Struct {
-	int codControle, offset1, offset2;
-}; // Estrutura do índice principal (Indice1)
+typedef struct {
+    int qtd;
+    int key[BUCKETSIZE];
+    int RRN[BUCKETSIZE];
+} typeBucket;
 
-struct indice2Struct {
-	int offset2;
-	char nomeVacina[40];
-};
-
-struct indice1Struct indice1[5000];
-struct indice2Struct indice2[5000];
-int numVacina, numCachorro, numindice1, numindice2;
+typedef struct {
+    int keycount; // number of keys in page
+    int key[MAXKEYS]; // the actual keys
+    int offset[MAXKEYS]; // rrn for the corresponding keys
+    int child[MAXKEYS+1]; // ptrs to rrns of descendants
+} BTPAGE;
 
 FILE *arqVacinas; // Arquivo principal 1 (AP1)
-FILE *arqVacinasCompactada; // Arquivo principal 1 (AP1) temporário para o processo de compactação
 FILE *arqCachorros; // Arquivo principal 2 (AP2)
-FILE *arqIndice1; // Arquivo do índice principal (Indice1)
-FILE *arqIndice2a; // Arquivo do índice secundário A (Indice2a)
-FILE *arqIndice2b; // Arquivo do índice secundário B (Indice2b)
+FILE *hash;
+FILE *arqIndice1ArvB; // file descriptor of btree file
 
 // Protótipos
 
@@ -83,7 +58,6 @@ void abrirArquivos();
 void cadastrarCachorro();
 void cadastrarVacina();
 void excluirVacina();
-void compactarDadosVacina();
 void consultarVacina();
 void invalidarRegistro();
 void reescreverOffset();
@@ -92,20 +66,15 @@ void completarListaIndice();
 void ordenarIndices();
 void adicionarIndice();
 void trocarOffset();
-void removerDoIndice2();
 void salvarIndice1();
 void salvarIndice2ab();
 void reescreverVacina();
 void atualizarIndice2();
 void lerIndice2();
-int obterOffset();
 int procurarCachorro();
 int buscarVacina();
 int calcularTamanhoRegistro();
-void openHash();
 void inserthash();
-
-/* prototypes */
 
 void btclose();
 bool btopen();
@@ -123,23 +92,18 @@ bool search_node(int key, BTPAGE *p_page, int *pos);
 void split(int key, int offset, int r_child, BTPAGE *p_oldpage, int *promo_key, int *promo_offset, int *promo_r_child, BTPAGE *p_newpage);
 void InOrder(int root);
 
+bool invalidHash();
+void createHash();
+
 // Function principal (main) do programa
 
 int main() {
-	openHash();
-	criarVetores();
 	abrirArquivos();
 
 	menu();
 
-	salvarIndice1();
-	salvarIndice2ab();
-
 	fclose(arqCachorros);
 	fclose(arqVacinas);
-	fclose(arqIndice1);
-	fclose(arqIndice2a);
-	fclose(arqIndice2b);
 
 	return 0;
 }
@@ -198,187 +162,16 @@ void menu() {
 
 void abrirArquivos() {
 	arqCachorros = fopen("AP2.dat", "r+b");
-	if (arqCachorros == NULL) {
+	if (arqCachorros == NULL)
 		arqCachorros = fopen("AP2.dat", "w+b");
+
+	arqVacinas = fopen("AP1.dat", "r+b");
+	if (arqVacinas == NULL)
 		arqVacinas = fopen("AP1.dat", "w+b");
-		int n = -1;
-		fwrite(&n, sizeof(int), 1, arqVacinas);
-		fwrite(&n, sizeof(int), 1, arqVacinas);
-		arqIndice1 = fopen("Indice1.dat", "w+b");
-		arqIndice2a = fopen("Indice2a.dat", "w+b");
-		arqIndice2b = fopen("Indice2b.dat", "w+b");
-	} else {
-		arqVacinas = fopen("AP1.dat", "r+b");
-		if (arqVacinas == NULL) {
-			arqVacinas = fopen("AP1.dat", "w+b");
-			int n = -1;
-			fwrite(&n, sizeof(int), 1, arqVacinas);
-			fwrite(&n, sizeof(int), 1, arqVacinas);
-			arqIndice1 = fopen("Indice1.dat", "w+b");
-			arqIndice2a = fopen("Indice2a.dat", "w+b");
-			arqIndice2b = fopen("Indice2b.dat", "w+b");
-		} else {
-			fseek(arqVacinas,0,2);
-			if ( (ftell(arqVacinas)) > 4) {
-				arqIndice1 = fopen("Indice1.dat", "r+b");
-				arqIndice2a = fopen("Indice2a.dat", "r+b");
-				arqIndice2b = fopen("Indice2b.dat", "r+b");
-				if ( (arqIndice1 == NULL) || (arqIndice2a == NULL) || (arqIndice2b == NULL)) {
-					arqIndice1 = fopen("Indice1.dat", "w+b");
-					arqIndice2a = fopen("Indice2a.dat", "w+b");
-					arqIndice2b = fopen("Indice2b.dat", "w+b");
-					completarListaIndice();
-				} else {
-					char indicador;
-					fread(&indicador, 1, 1, arqIndice1);
-					if (&indicador == "!") {
-						arqIndice1 = fopen("Indice1.dat", "w+b");
-						arqIndice2a = fopen("Indice2a.dat", "r+b");
-						arqIndice2b = fopen("Indice2b.dat", "r+b");
-						completarListaIndice();
-					} else {
-						completarIndice();
-					}
-				}
-			} else {
-				arqVacinas = fopen("AP1.dat", "w+b");
-				arqIndice1 = fopen("Indice1.dat", "w+b");
-				arqIndice2a = fopen("Indice2a.dat", "w+b");
-				arqIndice2b = fopen("Indice2b.dat", "w+b");
-			}
 
-			arqIndice2a = fopen("Indice2a.dat", "r+b");
-			arqIndice2b = fopen("Indice2b.dat", "r+b");
-		}
-	}
-}
-
-// Function para obter o offset
-
-int obterOffset(int tam) {
-	int regTam, offset;
-	int offset1 = 4;
-	int offsetAux = -1;
-
-	fseek(arqVacinas, offset1, 0);
-	fread(&offset1, sizeof(int), 1, arqVacinas);
-
-	if (offset1 != -1) {
-		do {
-			fseek(arqVacinas, offset1, 0);
-			fread(&regTam, sizeof(int), 1, arqVacinas);
-
-			if (tam <= regTam) {
-				fseek(arqVacinas, 1, 1);
-				offset = offset1;
-				fread(&offset1, sizeof(int), 1, arqVacinas);
-				fseek(arqVacinas, offsetAux + 5, 0);
-				fwrite(&offset1, sizeof(int), 1, arqVacinas);
-
-				return offset;
-			}
-
-			fseek(arqVacinas, 1, 1);
-			offsetAux = offset1;
-			fread(&offset1, sizeof(int), 1, arqVacinas);
-		} while (offset1 != -1);
-	}
-
-	return offset1;
-}
-
-// Function para adicionar um registro ao vetor de Índices
-
-void adicionarIndice(struct ap1Struct aux, int offset1) {
-	numindice1++;
-	indice1[numindice1].codControle = aux.codControle;
-	indice1[numindice1].offset1 = offset1;
-	indice1[numindice1].offset2 = -1;
-
-	int contador = 0;
-	bool achou = false;
-
-	while ( (contador <= numindice2) && (!achou) ) {
-		if (strcmp(indice2[contador].nomeVacina, aux.nomeVacina) == 0) {
-			achou = true;
-			if (indice2[contador].offset2 == -1) {
-				indice2[numindice2].offset2 = numindice1;
-			} else {
-				int aux = 0;
-				int offset2 = indice2[contador].offset2;
-				do {
-					aux = offset2;
-					offset2 = indice1[offset2].offset2;
-				} while (offset2 != -1) ;
-				indice1[aux].offset2 = numindice1;
-			}
-		} else {
-			contador++;
-		}
-	}
-
-	if (!achou) {
-		numindice2++;
-		strcpy(indice2[numindice2].nomeVacina, aux.nomeVacina);
-		indice2[numindice2].offset2 = numindice1;
-	}
-}
-
-// Function para trocar o offset recém reescrito
-
-void trocarOffset(int codigo, int offset1) {
-	bool achou = false;
-	int contador = 0;
-
-	while ((contador <= numindice1) && (!achou)) {
-		if (indice1[contador].codControle == codigo) {
-			achou = true;
-			invalidarRegistro(indice1[contador].offset1);
-			reescreverOffset(indice1[contador].offset1);
-			indice1[contador].offset1 = offset1;
-		}
-		contador++;
-	}
-}
-
-// Function para adicionar o registro da vacina recém-cadastrada no arquivo AP1
-
-void adicionarVacina(struct ap1Struct aux) {
-    bool promoted; // boolean: tells if a promotion from below
-	int root, // rrn of root page
-	promo_rrn; // rrn promoted from below
-	int promo_key, promo_offset; // key promoted from below
-
-	char buffer[105];
-	sprintf(buffer, "*%d|%d|%s|%s|%s|", aux.codControle, aux.codCachorro, &aux.nomeVacina, &aux.dataVacina, &aux.respAplic);
-	int tamanho = strlen(buffer);
-	int offset1 = obterOffset(tamanho);
-	int key = aux.codControle;
-
-	if (offset1 == -1) {
-		fseek(arqVacinas, 0, 2);
-		offset1 = ftell(arqVacinas);
-		fwrite(&tamanho, sizeof(int), 1, arqVacinas);
-	} else {
-		fseek(arqVacinas, offset1 + sizeof(int), 0);
-	}
-
-	fwrite(buffer, sizeof(char), strlen(buffer), arqVacinas);
-
-	insertHash(key, offset1);
-
-	if (btopen()) {
-	    root = getroot();
-	}
-    else {
-	    root = create_tree();
-	}
-
-	promoted = insert(root, key, offset1, &promo_rrn, &promo_key, &promo_offset);
-	if (promoted)
-		root = create_root(promo_key, promo_offset, root, promo_rrn);
-
-    btclose();
+	hash = fopen("Indice1Hash.dat", "r+b");
+    if ( (hash == NULL) || invalidHash() )
+        createHash();
 }
 
 // Function para procurar o código de um cachorro no AP2 e retornar se existe ou não
@@ -403,7 +196,7 @@ int procurarCachorro(int codigo) {
 	if (achou) {
 		return aux.codCachorro;
 	} else {
-		return -1;
+		return NIL;
 	}
 }
 
@@ -413,6 +206,10 @@ void cadastrarVacina() {
 	struct ap1Struct temporario;
 	struct ap2Struct tempCachorro;
 	char buffer[105];
+	int offset;
+
+	fseek(arqVacinas, 0, 2);
+	offset = ftell(arqVacinas);
 
 	do {
 		system("cls");
@@ -420,7 +217,7 @@ void cadastrarVacina() {
 		printf("Digite o codigo do cachorro: ");
 		scanf("%d", &temporario.codCachorro);
 
-		if (procurarCachorro(temporario.codCachorro) == -1) {
+		if (procurarCachorro(temporario.codCachorro) == NIL) {
 			printf("\nCachorro nao encontrado! ");
 			bool sair = false;
 			do {
@@ -446,7 +243,7 @@ void cadastrarVacina() {
 				}
 			} while (!sair);
 		}
-	} while (procurarCachorro(temporario.codCachorro) == -1);
+	} while (procurarCachorro(temporario.codCachorro) == NIL);
 
 	printf("Codigo de controle: ");
 	scanf("%d", &temporario.codControle);
@@ -456,9 +253,36 @@ void cadastrarVacina() {
 	scanf("%s", &temporario.dataVacina);
 	printf("Responsavel pela aplicacao: ");
 	scanf("%s", &temporario.respAplic);
-	fseek(arqIndice1, 0, 0);
-	fwrite("!", 1, 1, arqIndice1);
-	adicionarVacina(temporario);
+
+	fseek(arqVacinas, 0, 2);
+	fwrite(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
+
+	printf("\n");
+	printf("// Indice Hash //\n\n");
+
+	int key = temporario.codControle;
+	insertHash(key, offset);
+
+	printf("\n");
+	printf("// Indice Arvore-B //\n\n");
+
+	bool promoted; // boolean: tells if a promotion from below
+	int root, // rrn of root page
+	promo_rrn; // rrn promoted from below
+	int promo_key, promo_offset; // key promoted from below
+
+	if (btopen()) {
+	    root = getroot();
+	}
+    else {
+	    root = create_tree(NIL, NIL);
+	}
+
+	promoted = insert(root, key, offset, &promo_rrn, &promo_key, &promo_offset);
+	if (promoted)
+		root = create_root(promo_key, promo_offset, root, promo_rrn);
+
+    btclose();
 
 	printf("\n");
 	printf("Dados da vacina:\n");
@@ -503,491 +327,6 @@ void cadastrarCachorro() {
 	system("pause");
 }
 
-// Function para reescrever o offset de um registro
-
-void reescreverOffset(int newOffset) {
-	bool fim = false;
-	int offset1;
-	int offsettemporario = -1;
-
-	fseek(arqVacinas, sizeof(int), 0);
-	fread(&offset1, sizeof(int), 1, arqVacinas);
-
-	while (!(fim)) {
-		if ((offset1 == -1) || (newOffset < offset1)) {
-			fim = true;
-			fseek(arqVacinas, (offsettemporario + sizeof(int) + sizeof(char)), 0);
-			fwrite(&newOffset, sizeof(int), 1, arqVacinas);
-			fseek(arqVacinas, (newOffset + sizeof(int) + sizeof(char)), 0);
-			fwrite(&offset1, sizeof(int), 1, arqVacinas);
-		}
-		fseek(arqVacinas, (offset1 + sizeof(int) + sizeof(char)), 0);
-		offsettemporario = offset1;
-		fread(&offset1, sizeof(int), 1, arqVacinas);
-	}
-}
-
-// Function para marcar um registro como disponível para reuso
-
-void invalidarRegistro(int pos) {
-	fseek(arqVacinas, (pos + 4), 0);
-	fwrite("!", sizeof(char), 1, arqVacinas);
-}
-
-// Function para remover do indice secundario
-
-void removerDoIndice2(int pos, int codigo) {
-	char nome[100];
-	int tam;
-	int soma = 0;
-
-	fseek(arqVacinas, pos, 0);
-	fread(&tam, sizeof(int), 1, arqVacinas);
-	fseek(arqVacinas, 1, 1);
-	fread(&nome, tam - 1, 1, arqVacinas);
-	strtok(nome, "|");
-	soma += strlen(nome) + 1;
-	fseek(arqVacinas, pos + 5 + soma, 0);
-	fread(&nome, tam - 1 - soma, 1, arqVacinas);
-	strtok(nome, "|");
-	soma += strlen(nome) + 1;
-	fseek(arqVacinas, pos + 5 + soma, 0);
-	fread(&nome, tam - 1 - soma, 1, arqVacinas);
-	strtok(nome, "|");
-
-	int contador = 0;
-	bool achou = false;
-	bool achou2 = false;
-
-	while (!achou) {
-		if (strcmp(indice2[contador].nomeVacina, nome) == 0) {
-			achou = true;
-			int offset1 = indice2[contador].offset2;
-			if (indice1[offset1].codControle == codigo) {
-				indice2[contador].offset2 = indice1[offset1].offset2;
-			} else {
-				int offsetAnt;
-				do {
-					offsetAnt = offset1;
-					offset1 = indice1[offset1].offset2;
-					if (indice1[offset1].codControle == codigo) {
-						achou2 = true;
-						indice1[offsetAnt].offset2 = indice1[offset1].offset2;
-					}
-				} while (!achou2);
-			}
-		} else {
-			contador++;
-		}
-	}
-}
-
-// Function para excluir uma vacina
-
-void excluirVacina(int codigo) {
-	bool achou = false;
-	int contador = 0;
-
-	while ((contador <= numindice1) && (!achou)) {
-		if (indice1[contador].codControle == codigo) {
-			achou = true;
-			removerDoIndice2(indice1[contador].offset1, codigo);
-			invalidarRegistro(indice1[contador].offset1);
-			reescreverOffset(indice1[contador].offset1);
-			indice1[contador].codControle = -1;
-		}
-		contador++;
-	}
-
-	if (!achou) {
-		printf("Nao ha nenhuma vacina de codigo %d cadastrada!\n", codigo);
-	} else {
-		printf("Vacina referente ao codigo %d removida!\n", codigo);
-	}
-	system("pause");
-}
-
-// Function para encontrar um registro e retorná-lo como saída
-
-struct ap1Struct encontraRegistro(int pos) {
-	struct ap1Struct temporario;
-	int tam, tam2, temp, soma;
-	char str[40];
-
-	fseek(arqVacinas, pos, 0);
-	fread(&tam, sizeof(int), 1, arqVacinas);
-	fseek(arqVacinas, sizeof(char), 1);
-
-	fread(&str, tam - 1, 1, arqVacinas);
-	strtok(str, "|");
-	soma = strlen(str) + 1;
-	temp = atoi(str);
-	temporario.codControle = temp;
-
-	fseek(arqVacinas, pos + 5 + soma, 0);
-	fread(&str, tam - soma - 1, 1, arqVacinas);
-	strtok(str, "|");
-	soma += strlen(str) + 1;
-	temp = atoi(str);
-	temporario.codCachorro = temp;
-
-	fseek(arqVacinas, pos + 5 + soma, 0);
-	fread(&str, tam - soma - 1, 1, arqVacinas);
-	strtok(str, "|");
-	soma += strlen(str) + 1;
-	strcpy(temporario.nomeVacina, str);
-
-	fseek(arqVacinas, pos + 5 + soma, 0);
-	fread(&str, tam - soma - 1, 1, arqVacinas);
-	strtok(str, "|");
-	soma += strlen(str) + 1;
-	strcpy(temporario.dataVacina, str);
-
-	fseek(arqVacinas, pos + 5 + soma, 0);
-	fread(&str, tam - soma - 1, 1, arqVacinas);
-	strtok(str, "|");
-	soma += strlen(str) + 1;
-	strcpy(temporario.respAplic, str);
-
-	return temporario;
-}
-
-// Function para buscar uma vacina no vetor de Índices
-
-int buscarVacina(int codigo) {
-	int contador = 0;
-
-	while (contador <= numindice1) {
-		if (indice1[contador].codControle == codigo) {
-			return indice1[contador].offset1;
-		}
-		contador++;
-	}
-
-	return -1;
-}
-
-// Function para calcular o tamanho de um registro
-
-int calcularTamanhoRegistro(struct ap1Struct temporario) {
-	char buffer[105];
-
-	sprintf(buffer, "*%d|%d|%s|%s|%s|", temporario.codControle, temporario.codCachorro, &temporario.nomeVacina, &temporario.dataVacina, &temporario.respAplic);
-
-	return strlen(buffer);
-}
-
-// Function para escrever as alterações da vacina no Arquivo de Vacinas (AP1)
-
-void reescreverVacina(struct ap1Struct temporario, int offset1) {
-	char buffer[105];
-	sprintf(buffer, "*%d|%d|%s|%s|%s|", temporario.codControle, temporario.codCachorro, &temporario.nomeVacina, &temporario.dataVacina, &temporario.respAplic);
-	int tamanho = strlen(buffer);
-
-	fseek(arqVacinas, offset1 + sizeof(int), 0);
-	fwrite(buffer, sizeof(char), strlen(buffer), arqVacinas);
-}
-
-// Function para atualizar o Indice secundário
-
-void atualizarIndice2(char *nomeAnt, char *nome, int codigo) {
-	int contador = 0;
-	int ref;
-	bool achou = false;
-	bool achou2 = false;
-
-	while (!achou) {
-		if (strcmp(indice2[contador].nomeVacina, nomeAnt) == 0) {
-			achou = true;
-			int offset1 = indice2[contador].offset2;
-			if (indice1[offset1].codControle == codigo) {
-				indice2[contador].offset2 = indice1[offset1].offset2;
-				ref = offset1;
-			} else {
-				int offsetAnt;
-				do {
-					offsetAnt = offset1;
-					offset1 = indice1[offset1].offset2;
-					if (indice1[offset1].codControle == codigo) {
-						achou2 = true;
-						indice1[offsetAnt].offset2 = indice1[offset1].offset2;
-						ref = offset1;
-					}
-				} while (!achou2);
-			}
-		} else {
-			contador++;
-		}
-	}
-
-	contador = 0;
-	achou = false;
-
-	while ( (contador <= numindice2) && (!achou) ){
-		if (strcmp(indice2[contador].nomeVacina, nome) == 0) {
-			achou = true;
-			if (indice2[contador].offset2 == -1) {
-				indice2[numindice2].offset2 = ref;
-			} else {
-				int temporario = 0;
-				int offset2 = indice2[contador].offset2;
-				do {
-					temporario = offset2;
-					offset2 = indice1[offset2].offset2;
-				} while (offset2 != -1) ;
-				indice1[temporario].offset2 = ref;
-			}
-		} else {
-			contador++;
-		}
-	}
-
-	if (!achou) {
-		numindice2++;
-		strcpy(indice2[numindice2].nomeVacina, nome);
-		indice2[numindice2].offset2 = ref;
-	}
-
-	indice1[ref].offset2 = -1;
-}
-
-// Function para a consulta de vacinas (item 5 do menu)
-
-void consultarVacina() {
-	int codProcurado;
-	int RRN = 0, tam, offsetAP1, soma;
-	bool achou = 0;
-	char str[100];
-
-	system("cls");
-	printf("Digite o codigo da vacina a ser procurada: ");
-	scanf("%d", &codProcurado);
-
-	while ((indice1[RRN].codControle != -1) && (!achou)) {
-		if (indice1[RRN].codControle == codProcurado) {
-			achou = true;
-			offsetAP1 = indice1[RRN].offset1;
-			printf("\nOffset do registro: %d\n",offsetAP1);
-			fseek(arqVacinas, offsetAP1, 0);
-			fread(&tam, sizeof(int), 1, arqVacinas);
-
-			fseek(arqVacinas, 1, 1);
-			fread(&str, tam - 1, 1, arqVacinas);
-			strtok(str, "|");
-			soma = strlen(str) + 1;
-			printf("\nCodigo da vacina: %s", str);
-
-			fseek(arqVacinas, offsetAP1 + 5 + soma, 0);
-			fread(&str, tam - soma - 1, 1, arqVacinas);
-			strtok(str, "|");
-			soma += strlen(str) + 1;
-			printf("\nCodigo do cachorro: %s", str);
-
-			fseek(arqVacinas, offsetAP1 + 5 + soma, 0);
-			fread(&str, tam - soma - 1, 1, arqVacinas);
-			strtok(str, "|");
-			soma += strlen(str) + 1;
-			printf("\nNome da vacina: %s", str);
-
-			fseek(arqVacinas, offsetAP1 + 5 + soma, 0);
-			fread(&str, tam - soma - 1, 1, arqVacinas);
-			strtok(str, "|");
-			soma += strlen(str) + 1;
-			printf("\nData da vacina: %s", str);
-
-			fseek(arqVacinas, offsetAP1 + 5 + soma, 0);
-			fread(&str, tam - soma - 1, 1, arqVacinas);
-			strtok(str, "|");
-			soma += strlen(str) + 1;
-			printf("\nResponsavel pela aplicacao: %s\n", str);
-		} else {
-			RRN++;
-		}
-	}
-
-	if (!achou) {
-		printf("Vacina referente ao codigo %d nao encontrada.\n\n", codProcurado);
-	}
-
-	system("pause");
-}
-
-void criarVetores() {
-	numindice1 = -1;
-	numindice2 = -1;
-
-	int i;
-
-	for (i = 0; i <= 5000; i++) {
-		indice1[i].codControle = -1;
-	}
-}
-
-// Function para salvar o índice primário no arquivo (Indice1.dat)
-
-void salvarIndice1() {
-	fseek(arqIndice1, 0, 0);
-	fwrite("*", 1, 1, arqIndice1);
-
-	int contador = 0;
-
-	while (contador <= numindice1) {
-		if (indice1[contador].codControle != -1) {
-			fwrite(&indice1[contador].codControle, sizeof(int), 1, arqIndice1);
-			fwrite(&indice1[contador].offset1, sizeof(int), 1, arqIndice1);
-		}
-		contador++;
-	} 
-}
-
-// Function para salvar os índices secundários nos arquivos (Indice2a.dat e Indice2b.dat)
-
-void salvarIndice2ab() {
-	fseek(arqIndice2a, 0, 0);
-	fseek(arqIndice2b, 0, 0);
-
-	int contador = 0;
-
-	struct indice2Struct temporario;
-	while (contador <= numindice2) {
-		strcpy(temporario.nomeVacina, indice2[contador].nomeVacina);
-		temporario.offset2 =  indice2[contador].offset2;
-		fwrite(&temporario, sizeof(temporario), 1, arqIndice2a);
-		int offset1 = indice2[contador].offset2;
-		while (offset1 != -1) {
-			fwrite(&indice1[offset1].codControle, sizeof(int), 1, arqIndice2b);
-			fwrite(&indice1[offset1].offset2, sizeof(int), 1, arqIndice2b);
-			offset1 = indice1[offset1].offset2;
-		}
-		contador++;
-	}
-}
-
-
-// Function para criar o índice a partir do Arquivo de Vacinas (AP1)
-
-void completarIndice() {
-	fseek(arqIndice2a, 0, 2);
-	int tamArq = ftell(arqIndice2a) / 44;
-	fseek(arqIndice2a, 0, 0);
-
-	struct indice2Struct temporario;
-
-	int codigo, offset2;
-	int contador = 0;
-
-	while (contador < tamArq) {
-		fread(&temporario, sizeof(temporario), 1, arqIndice2a);
-		numindice2++;
-		strcpy(indice2[numindice2].nomeVacina, temporario.nomeVacina);
-		indice2[numindice2].offset2 = temporario.offset2;
-		int offset1 = temporario.offset2;
-		while (offset1 != -1) {
-			fread(&codigo, sizeof(int), 1, arqIndice2b);
-			fread(&offset2, sizeof(int), 1, arqIndice2b);
-			indice1[offset1].codControle = codigo;
-			indice1[offset1].offset1 = 777;
-			indice1[offset1].offset2 = offset2;
-			if (offset1 > numindice1) {
-				numindice1 = offset1;
-			}
-			offset1 = offset2;
-		}
-		contador++;
-	}
-
-	fseek(arqIndice1, 1, 0);
-	contador = 0;
-
-	int offset1;
-
-	while (contador <= numindice1) {
-		if (indice1[contador].codControle != -1) {
-			fseek(arqIndice1, 4, 1);
-			fread(&offset1, sizeof(int), 1, arqIndice1);
-			indice1[contador].offset1 = offset1;
-		}
-		contador++;
-	}
-}
-
-// Function para carregar o índice do disco para a RAM
-
-void completarListaIndice() {
-	int pos = 8;
-	int tam = 0;
-	char indicador;
-	char str[100];
-	int codigo = 0;
-	int ref, soma, contador;
-	bool achou;
-	numindice1 = -1;
-	numindice2 = -1;
-
-	fseek(arqVacinas, 0, 2);
-	int tamArq = ftell(arqVacinas);
-	fseek(arqVacinas, 8, 0);
-
-	do {
-		fread(&tam, sizeof(int), 1, arqVacinas);
-		fread(&indicador, sizeof(char), 1, arqVacinas);
-
-		if (indicador == '*') {
-			ref = ftell(arqVacinas);
-			fread(&str, tam - 1, 1, arqVacinas);
-			strtok(str, "|");
-			codigo = atoi(str);
-			soma = strlen(str)+1;
-
-			numindice1++;
-			indice1[numindice1].codControle = codigo;
-			indice1[numindice1].offset1 = pos;
-			indice1[numindice1].offset2 = -1;
-
-			fseek(arqVacinas, ref + soma, 0);
-			fread(&str, tam - 1 - soma , 1, arqVacinas);
-			strtok(str, "|");
-			soma += strlen(str) + 1;
-			fseek(arqVacinas, ref + soma, 0);
-			fread(&str, tam - 1 - soma , 1, arqVacinas);
-			strtok(str, "|");
-
-			achou = false;
-			contador = 0;
-
-			while ((contador <= numindice2) && (!achou)) {
-				if (strcmp(indice2[contador].nomeVacina, str) == 0) {
-					achou = true;
-					if (indice2[contador].offset2 == -1) {
-						indice2[numindice2].offset2 = numindice1;
-					} else {
-						int temporario = 0;
-						int offset2 = indice2[contador].offset2;
-						do {
-							temporario = offset2;
-							offset2 = indice1[offset2].offset2;
-						} while (offset2 != -1) ;
-						indice1[temporario].offset2 = numindice1;
-					}
-				} else {
-					contador++;
-				}
-			}
-
-			if (!achou) {
-				numindice2++;
-				strcpy(indice2[numindice2].nomeVacina, str);
-				indice2[numindice2].offset2 = numindice1;
-			}
-
-		} else {
-			fseek(arqVacinas, (tam - sizeof(char)), 1);
-		}
-
-		pos += tam + sizeof(int);
-	} while (pos < tamArq);
-}
-
 // Hash ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void createHash() {
@@ -995,14 +334,14 @@ void createHash() {
 
     typeBucket bucket;
     bucket.qtd = 0;
-    for (i = 0; i < bucketSize; i++) {
-        bucket.key[i] = -1;
-        bucket.RRN[i] = -1;
+    for (i = 0; i < BUCKETSIZE; i++) {
+        bucket.key[i] = NIL;
+        bucket.RRN[i] = NIL;
     }
 
-    hash = fopen("hash.bin","w+b");
+    hash = fopen("Indice1Hash.dat", "w+b");
 
-    for (i = 1; i <= hashSize; i++)
+    for (i = 1; i <= HASHSIZE; i++)
         fwrite(&bucket,sizeof(bucket),1,hash);
 }
 
@@ -1011,23 +350,12 @@ bool invalidHash() {
     int fileSize = ftell(hash);
     fseek(hash,0,0);
 
-    if ( fileSize != (hashSize*(bucketSize*2*sizeof(int) + sizeof(int))) )
+    if ( fileSize != (HASHSIZE*(BUCKETSIZE*2*sizeof(int) + sizeof(int))) )
         return true;
 }
 
-void openHash() {
-    hash = fopen("hash.bin","r+b");
-    if ( (hash == NULL) || invalidHash() )
-        createHash();
-}
-
 int hashFunction(int key) {
-    int value = (key/hashSize);
-
-    while (value > (hashSize - 1) ) {
-        value = value/hashSize;
-    }
-
+    int value = (key % HASHSIZE);
     return value;
 }
 
@@ -1055,9 +383,10 @@ void progressiveOverflow(int key, int RRN, int address, int refAddress, int *cou
         case 2:
             *count = *count + 1;
 
-            printf("Colisao - Tentativa %d\n", *count);
+            printf("Colisao!\n");
+			printf("Tentativa %d\n", *count);
 
-            if ( (address + 1) > (hashSize - 1) )
+            if ( (address + 1) > (HASHSIZE - 1) )
                 address = 0;
             else
                 address++;
@@ -1065,7 +394,7 @@ void progressiveOverflow(int key, int RRN, int address, int refAddress, int *cou
             if (address != refAddress)
                 progressiveOverflow(key, RRN, address, refAddress, count);
             else
-                *count = -1;
+                *count = NIL;
 
             break;
     }
@@ -1074,16 +403,16 @@ void progressiveOverflow(int key, int RRN, int address, int refAddress, int *cou
 void insertHash(int key, int RRN) {
     int address = hashFunction(key);
 
-    printf("Endereco %d gerado para a chave %d\n", address, key);
-	printf("Lel");
+    printf("Endereco %d\n", address);
     int count = 0;
 
     progressiveOverflow(key, RRN, address, address, &count);
 
-    if (count != -1)
+    if (count != NIL) {
         printf("Chave %d inserida com sucesso\n", key);
-    else
+    } else {
         printf("Chave %d nao inserida, hash cheio!\n", key);
+	}
 }
 
 int searchHashR(int key, int *address, int refAddress, int *count) {
@@ -1094,14 +423,14 @@ int searchHashR(int key, int *address, int refAddress, int *count) {
 
     switch (bucket.qtd) {
         case 0:
-            *count = -1;
+            *count = NIL;
             break;
         case 1:
             if ( bucket.key[0] == key ) {
                 return bucket.RRN[0];
             }
             else {
-                *count = -1;
+                *count = NIL;
             }
             break;
         case 2:
@@ -1112,7 +441,7 @@ int searchHashR(int key, int *address, int refAddress, int *count) {
             else {
                 *count = *count + 1;
 
-                if ( (*address + 1) > (hashSize - 1) )
+                if ( (*address + 1) > (HASHSIZE - 1) )
                     *address = 0;
                 else
                     (*address)++;
@@ -1121,7 +450,7 @@ int searchHashR(int key, int *address, int refAddress, int *count) {
                     searchHashR(key, address, refAddress, count);
                 }
                 else {
-                    *count = -1;
+                    *count = NIL;
                 }
             }
 
@@ -1135,7 +464,7 @@ void searchHash(int key) {
 
     int RRN = searchHashR(key, &address, address, &count);
 
-    if (count != -1)
+    if (count != NIL)
         printf("Chave %d encontrada, endereco %d, %d acessos\n", key, address, count);
     else
         printf("Chave %d nao encontrada\n", key);
@@ -1143,7 +472,6 @@ void searchHash(int key) {
 
 /*
 int main() {
-    openHash();
 
     insertHash(2,2);
     searchHash(2);
@@ -1206,10 +534,10 @@ bool insert(int rrn, int key, int offset, int *promo_r_child, int *promo_key, in
 	}
     btread(rrn, &page);
 
-	found = search_node ( key, &page, &pos);
-	if (found){
-	    printf ("Chave %d duplicada! \n", key);
-		return(0);
+	found = search_node (key, &page, &pos);
+	if (found) {
+	    printf ("Chave %d duplicada!\n", key);
+		return (0);
 	}
 
 	promoted = insert(page.child[pos], key, offset, &p_b_rrn, &p_b_key, &p_b_offset);
@@ -1233,19 +561,19 @@ bool insert(int rrn, int key, int offset, int *promo_r_child, int *promo_key, in
 }
 
 bool btopen() {
-    btfd = fopen("btree.bin", "r+b");
-    return (btfd != NULL);
+    arqIndice1ArvB = fopen("btree.bin", "r+b");
+    return (arqIndice1ArvB != NULL);
 }
 
 void btclose() {
-    close(btfd);
+    close(arqIndice1ArvB);
 }
 
 int getroot() {
     int root;
-    fseek(btfd, 0, 0);
+    fseek(arqIndice1ArvB, 0, 0);
 
-    fread(&root, sizeof(int), 1, btfd);
+    fread(&root, sizeof(int), 1, arqIndice1ArvB);
 
     /*
     if (root == -4) {
@@ -1258,8 +586,8 @@ int getroot() {
 }
 
 void putroot(int root) {
-	    fseek(btfd, 0, 0);
-		fwrite(&root, sizeof(int), 1, btfd);
+	    fseek(arqIndice1ArvB, 0, 0);
+		fwrite(&root, sizeof(int), 1, arqIndice1ArvB);
 }
 
 int create_root(int key, int offset, int left, int right) {
@@ -1277,38 +605,38 @@ int create_root(int key, int offset, int left, int right) {
 	return(rrn);
 }
 
-int create_tree() {
-	int key, offset;
-	btfd = fopen("btree.bin", "w+b");
-	fclose(btfd);
+int create_tree(int key, int offset) {
+//	int key, offset;
+	arqIndice1ArvB = fopen("btree.bin", "w+b");
+	fclose(arqIndice1ArvB);
 	btopen();
-	printf("Digite chave: ");
-	scanf("%d", &key);
-	printf("Digite RRN: ");
-	scanf("%d", &offset);
+//	printf("Digite chave: ");
+//	scanf("%d", &key);
+//	printf("Digite RRN: ");
+//	scanf("%d", &offset);
 	//key = getchar();
 	//key = atoi(key);
 	return (create_root(key, offset, NIL, NIL));
 }
 
 int getpage() {
-    fseek(btfd,0,2);
+    fseek(arqIndice1ArvB,0,2);
 
-    int addr = ftell(btfd);
+    int addr = ftell(arqIndice1ArvB);
 
     return (addr / PAGESIZE);
 }
 
 void btread(int rrn, BTPAGE *page_ptr) {
     int addr = rrn*PAGESIZE + 4;
-    fseek(btfd, addr, 0);
-    fread(&(*page_ptr),sizeof(BTPAGE),1,btfd);
+    fseek(arqIndice1ArvB, addr, 0);
+    fread(&(*page_ptr),sizeof(BTPAGE),1,arqIndice1ArvB);
 }
 
 void btwrite(int rrn, BTPAGE page_ptr) {
     int addr = rrn*PAGESIZE + 4;
-    fseek(btfd, addr, 0);
-    fwrite(&page_ptr,sizeof(BTPAGE),1,btfd);
+    fseek(arqIndice1ArvB, addr, 0);
+    fwrite(&page_ptr,sizeof(BTPAGE),1,arqIndice1ArvB);
 }
 
 void pageinit(BTPAGE *p_page) {
@@ -1394,8 +722,6 @@ void InOrder(int root) {
 
     BTPAGE page;
 
-    fseek(btfd,root,0);
-
     btread(root, &page);
 
     int i;
@@ -1405,6 +731,7 @@ void InOrder(int root) {
         value = pos/2;
 
         if ( (pos % 2) == 1 ) {
+            printf("keycount: %d \n", page.keycount);
             printf("chave: %d \n", page.key[value]);
             printf("rrn: %d \n", page.offset[value]);
         }
@@ -1417,28 +744,33 @@ void InOrder(int root) {
 
 }
 
-/*
-int searchRecord(int key) {
-    int value;
-
+int searchRecord(int key, int page_ptr) {
     BTPAGE page;
 
-    fseek(btfd,root,0);
+    btread(page_ptr, &page);
 
-    btread(root, &page);
-
-    int i;
     int pos = 0;
     bool found = false;
 
-    while ( (pos < MAXKEYS) || (!found) ){
-        if (key < page.key[pos])
+    while ( (pos < page.keycount) && (!found) ) {
+        if (key == page.key[pos]) {
             found = true;
-            searchRecord(page.child[pos]);
-        else
-            pos++;
+            return page.offset[pos];
+        }
+        else if (key < page.key[pos]) {
+            found = true;
+            if (page.child[pos] != NIL)
+                return searchRecord(key, page.child[pos]);
+            else
+                return NIL;
+        }
+        pos++;
     }
 
-    if
+    if (!found) {
+        if (page.child[pos] != NIL)
+            return searchRecord(key, page.child[pos]);
+        else
+            return NIL;
+    }
 }
-*/
