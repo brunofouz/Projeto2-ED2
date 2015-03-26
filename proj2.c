@@ -17,7 +17,7 @@
 extern int root; // rrn of root page
 extern int infd; // file descriptor of input file
 
-// Declarações de estruturas e descritores de arquivos globais
+// DeclaraÃ§Ãµes de estruturas e descritores de arquivos globais
 
 struct ap1Struct {
 	int codControle, codCachorro;
@@ -50,7 +50,7 @@ FILE *arqCachorros; // Arquivo principal 2 (AP2)
 FILE *hash;
 FILE *arqIndice1ArvB; // file descriptor of btree file
 
-// Protótipos
+// ProtÃ³tipos
 
 void menu();
 void abrirArquivos();
@@ -65,7 +65,9 @@ void adicionarIndice();
 void trocarOffset();
 void reescreverVacina();
 int procurarCachorro();
-void inserthash();
+void insertHash();
+void buscarVacinaHash();
+void buscarVacinaArvB();
 
 void btclose();
 bool btopen();
@@ -149,7 +151,7 @@ void menu() {
 	} while (!fim);
 }
 
-// Function para abertura e verificação dos arquivos
+// Function para abertura e verificaÃ§Ã£o dos arquivos
 
 void abrirArquivos() {
 	arqCachorros = fopen("AP2.dat", "r+b");
@@ -165,7 +167,7 @@ void abrirArquivos() {
         createHash();
 }
 
-// Function para procurar o código de um cachorro no AP2 e retornar se existe ou não
+// Function para procurar o cÃ³digo de um cachorro no AP2 e retornar se existe ou nÃ£o
 
 int procurarCachorro(int codigo) {
 	fseek(arqCachorros, 0, 2);
@@ -573,7 +575,7 @@ int getroot() {
     /*
     if (root == -4) {
         printf("Error: Unable to get root. \007\n");
-        return 1; //se não der certo retorna 1 by bruno fouz
+        return 1; //se nÃ£o der certo retorna 1 by bruno fouz
 	}
 	*/
 
