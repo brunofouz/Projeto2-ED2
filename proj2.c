@@ -53,27 +53,18 @@ FILE *arqIndice1ArvB; // file descriptor of btree file
 // Protótipos
 
 void menu();
-void criarVetores();
 void abrirArquivos();
 void cadastrarCachorro();
 void cadastrarVacina();
-void excluirVacina();
 void consultarVacina();
-void invalidarRegistro();
 void reescreverOffset();
 void completarIndice();
 void completarListaIndice();
 void ordenarIndices();
 void adicionarIndice();
 void trocarOffset();
-void salvarIndice1();
-void salvarIndice2ab();
 void reescreverVacina();
-void atualizarIndice2();
-void lerIndice2();
 int procurarCachorro();
-int buscarVacina();
-int calcularTamanhoRegistro();
 void inserthash();
 
 void btclose();
@@ -81,7 +72,7 @@ bool btopen();
 void btread(int rrn, BTPAGE *page_ptr);
 void btwrite(int rrn, BTPAGE page_ptr);
 int create_root(int key, int rrn, int left, int right);
-int create_tree();
+void create_tree();
 int getpage();
 int getroot();
 bool insert(int rrn, int key, int offset, int *promo_r_child, int *promo_key, int *promo_offset);
@@ -90,7 +81,7 @@ void pageinit(BTPAGE *p_page);
 void putroot(int root);
 bool search_node(int key, BTPAGE *p_page, int *pos);
 void split(int key, int offset, int r_child, BTPAGE *p_oldpage, int *promo_key, int *promo_offset, int *promo_r_child, BTPAGE *p_newpage);
-void InOrder(int root);
+void percorreVacinas(int root);
 
 bool invalidHash();
 void createHash();
@@ -139,13 +130,13 @@ void menu() {
 				cadastrarVacina();
 				break;
 			case '3':
-				/////////////////////////////////
+				percorreVacinas(getroot());
 				break;
 			case '4':
-				/////////////////////////////////
+				buscarVacinaHash();
 				break;
 			case '5':
-				/////////////////////////////////
+				buscarVacinaArvB();
 				break;
 			case '6':
 				printf("Fechando o programa...\n");
@@ -275,7 +266,8 @@ void cadastrarVacina() {
 	    root = getroot();
 	}
     else {
-	    root = create_tree(NIL, NIL);
+	    create_tree();
+		root = NIL;
 	}
 
 	promoted = insert(root, key, offset, &promo_rrn, &promo_key, &promo_offset);
@@ -458,16 +450,19 @@ int searchHashR(int key, int *address, int refAddress, int *count) {
     }
 }
 
-void searchHash(int key) {
+bool searchHash(int key) {
     int address = hashFunction(key);
     int count = 1;
 
     int RRN = searchHashR(key, &address, address, &count);
 
-    if (count != NIL)
+    if (count != NIL) {
         printf("Chave %d encontrada, endereco %d, %d acessos\n", key, address, count);
-    else
+		return true;
+    } else {
         printf("Chave %d nao encontrada\n", key);
+		return false;
+	}
 }
 
 /*
@@ -605,18 +600,22 @@ int create_root(int key, int offset, int left, int right) {
 	return(rrn);
 }
 
-int create_tree(int key, int offset) {
+void create_tree() {
 //	int key, offset;
 	arqIndice1ArvB = fopen("btree.bin", "w+b");
 	fclose(arqIndice1ArvB);
 	btopen();
+
+	fseek(arqIndice1ArvB, 0, 0);
+	int n = NIL;
+	fwrite(&n, sizeof(int), 1, arqIndice1ArvB);
+
 //	printf("Digite chave: ");
 //	scanf("%d", &key);
 //	printf("Digite RRN: ");
 //	scanf("%d", &offset);
 	//key = getchar();
 	//key = atoi(key);
-	return (create_root(key, offset, NIL, NIL));
 }
 
 int getpage() {
@@ -717,7 +716,9 @@ void split(int key, int offset, int r_child, BTPAGE *p_oldpage, int *promo_key, 
 	*promo_offset = workoffset[MINKEYS];
 }
 
-void InOrder(int root) {
+void percorreVacinas(int root) {
+	struct ap1Struct temporario;
+	struct ap2Struct tempCachorro;
     int value;
 
     BTPAGE page;
@@ -733,15 +734,32 @@ void InOrder(int root) {
         if ( (pos % 2) == 1 ) {
             printf("keycount: %d \n", page.keycount);
             printf("chave: %d \n", page.key[value]);
-            printf("rrn: %d \n", page.offset[value]);
+            printf("rrn: %d \n\n", page.offset[value]);
+
+			fseek(arqVacinas, page.offset[value], 0);
+			fread(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
+
+			printf("Dados da vacina:\n");
+			printf("Codigo da vacina: %d\n", temporario.codControle);
+			printf("Nome da vacina: %s\n", temporario.nomeVacina);
+			printf("Data da vacinacao: %s\n", temporario.dataVacina);
+			printf("Responsavel pela aplicacao: %s\n\n", temporario.respAplic);
+
+			fseek(arqCachorros, ((temporario.codCachorro) * sizeof(tempCachorro)), 0);
+			fread(&tempCachorro, sizeof(tempCachorro), 1, arqCachorros);
+
+			printf("Dados do cachorro que recebera a vacina:\n");
+			printf("Codigo do cachorro: %d\n", tempCachorro.codCachorro);
+			printf("Nome do cachorro: %s\n", tempCachorro.nomeCachorro);
+			printf("Raca: %s\n\n", tempCachorro.raca);
+			system("pause");
         }
         else {
             if (page.child[value] != NIL)
-                InOrder(page.child[value]);
+                percorreVacinas(page.child[value]);
         }
         pos++;
      }
-
 }
 
 int searchRecord(int key, int page_ptr) {
@@ -752,25 +770,100 @@ int searchRecord(int key, int page_ptr) {
     int pos = 0;
     bool found = false;
 
-    while ( (pos < page.keycount) && (!found) ) {
-        if (key == page.key[pos]) {
-            found = true;
-            return page.offset[pos];
-        }
-        else if (key < page.key[pos]) {
-            found = true;
-            if (page.child[pos] != NIL)
-                return searchRecord(key, page.child[pos]);
-            else
-                return NIL;
-        }
-        pos++;
-    }
+/*	if(page_ptr = NIL) {
+		return NIL;
+	} else {*/
+    	while ( (pos < page.keycount) && (!found) ) {
+        	if (key == page.key[pos]) {
+        	    found = true;
+				return page.offset[pos];
+        	}
+        	else if (key < page.key[pos]) {
+            	found = true;
+            	if (page.child[pos] != NIL)
+                	return searchRecord(key, page.child[pos]);
+            	else
+                	return NIL;
+        	}
+        	pos++;
+    	}
 
-    if (!found) {
-        if (page.child[pos] != NIL)
-            return searchRecord(key, page.child[pos]);
-        else
-            return NIL;
-    }
+    	if (!found) {
+        	if (page.child[pos] != NIL)
+            	return searchRecord(key, page.child[pos]);
+        	else
+            	return NIL;
+    	}
+	/*}*/
+}
+
+void buscarVacinaHash() {
+
+	struct ap1Struct temporario;
+	struct ap2Struct tempCachorro;
+	int codigo;
+
+	printf("Digite o codigo da vacina: ");
+	scanf("%d", &codigo);
+
+	int address = hashFunction(codigo);
+    int count = 1;
+
+    int RRN = searchHashR(codigo, &address, address, &count);
+
+	searchHash(codigo);
+	bool lel = searchHash(codigo);
+
+	if (lel) {
+		printf("\n");
+
+		fseek(arqVacinas, RRN, 0);
+		fread(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
+
+		printf("Dados da vacina:\n");
+		printf("Codigo da vacina: %d\n", temporario.codControle);
+		printf("Nome da vacina: %s\n", temporario.nomeVacina);
+		printf("Data da vacinacao: %s\n", temporario.dataVacina);
+		printf("Responsavel pela aplicacao: %s\n\n", temporario.respAplic);
+
+		fseek(arqCachorros, ((temporario.codCachorro) * sizeof(tempCachorro)), 0);
+		fread(&tempCachorro, sizeof(tempCachorro), 1, arqCachorros);
+
+		printf("Dados do cachorro que recebera a vacina:\n");
+		printf("Codigo do cachorro: %d\n", tempCachorro.codCachorro);
+		printf("Nome do cachorro: %s\n", tempCachorro.nomeCachorro);
+		printf("Raca: %s\n\n", tempCachorro.raca);
+		system("pause");
+	} else {
+		printf("\n");
+	}
+}
+
+void buscarVacinaArvB() {
+	struct ap1Struct temporario;
+	struct ap2Struct tempCachorro;
+	int codigo, RRN;
+
+	printf("Digite o codigo da vacina: ");
+	scanf("%d", &codigo);
+
+	RRN = searchRecord(codigo, getroot());
+
+	fseek(arqVacinas, RRN, 0);
+	fread(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
+
+	printf("Dados da vacina:\n");
+	printf("Codigo da vacina: %d\n", temporario.codControle);
+	printf("Nome da vacina: %s\n", temporario.nomeVacina);
+	printf("Data da vacinacao: %s\n", temporario.dataVacina);
+	printf("Responsavel pela aplicacao: %s\n\n", temporario.respAplic);
+
+	fseek(arqCachorros, ((temporario.codCachorro) * sizeof(tempCachorro)), 0);
+	fread(&tempCachorro, sizeof(tempCachorro), 1, arqCachorros);
+
+	printf("Dados do cachorro que recebera a vacina:\n");
+	printf("Codigo do cachorro: %d\n", tempCachorro.codCachorro);
+	printf("Nome do cachorro: %s\n", tempCachorro.nomeCachorro);
+	printf("Raca: %s\n\n", tempCachorro.raca);
+	system("pause");
 }
