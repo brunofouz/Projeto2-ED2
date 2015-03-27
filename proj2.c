@@ -1,3 +1,12 @@
+//////////////////////////////////////////////////////////////////////
+//                                                                  //
+//  Estrutura de Dados II                                           //
+//  Projeto 2                                                       //
+//                                                                  //
+//  Alunos: Bruno Fouz Valente e Pedro Ivo Monteiro Privatto        //
+//                                                                  //
+//////////////////////////////////////////////////////////////////////
+
 // Includes
 
 #include <stdio.h>
@@ -36,14 +45,14 @@ typedef struct {
     int qtd;
     int key[BUCKETSIZE];
     int RRN[BUCKETSIZE];
-} typeBucket;
+} typeBucket; // Estrutura para o indice em Hash
 
 typedef struct {
     int keycount; // number of keys in page
     int key[MAXKEYS]; // the actual keys
     int offset[MAXKEYS]; // rrn for the corresponding keys
     int child[MAXKEYS+1]; // ptrs to rrns of descendants
-} BTPAGE;
+} BTPAGE; // Estrutura para o indice em Arvore-B
 
 FILE *arqVacinas; // Arquivo principal 1 (AP1)
 FILE *arqCachorros; // Arquivo principal 2 (AP2)
@@ -56,14 +65,6 @@ void menu();
 void abrirArquivos();
 void cadastrarCachorro();
 void cadastrarVacina();
-void consultarVacina();
-void reescreverOffset();
-void completarIndice();
-void completarListaIndice();
-void ordenarIndices();
-void adicionarIndice();
-void trocarOffset();
-void reescreverVacina();
 int procurarCachorro();
 void insertHash();
 void buscarVacinaHash();
@@ -85,7 +86,7 @@ bool search_node(int key, BTPAGE *p_page, int *pos);
 void split(int key, int offset, int r_child, BTPAGE *p_oldpage, int *promo_key, int *promo_offset, int *promo_r_child, BTPAGE *p_newpage);
 void percorreVacinas(int root);
 
-bool invalidHash();
+bool invalidarHash();
 void createHash();
 
 // Function principal (main) do programa
@@ -97,6 +98,8 @@ int main() {
 
 	fclose(arqCachorros);
 	fclose(arqVacinas);
+	fclose(hash);
+	btclose();
 
 	return 0;
 }
@@ -155,16 +158,19 @@ void menu() {
 
 void abrirArquivos() {
 	arqCachorros = fopen("AP2.dat", "r+b");
-	if (arqCachorros == NULL)
+	if (arqCachorros == NULL) {
 		arqCachorros = fopen("AP2.dat", "w+b");
+	}
 
 	arqVacinas = fopen("AP1.dat", "r+b");
-	if (arqVacinas == NULL)
+	if (arqVacinas == NULL) {
 		arqVacinas = fopen("AP1.dat", "w+b");
+	}
 
 	hash = fopen("Indice1Hash.dat", "r+b");
-    if ( (hash == NULL) || invalidHash() )
+    if ((hash == NULL) || invalidarHash()) {
         createHash();
+	}
 }
 
 // Function para procurar o cÃ³digo de um cachorro no AP2 e retornar se existe ou nÃ£o
@@ -251,12 +257,18 @@ void cadastrarVacina() {
 	fwrite(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
 
 	printf("\n");
+
+	// Adiciona no indice do Hash
+
 	printf("// Indice Hash //\n\n");
 
 	int key = temporario.codControle;
 	insertHash(key, offset);
 
 	printf("\n");
+
+	// Adiciona no indice da Arvore-B
+
 	printf("// Indice Arvore-B //\n\n");
 
 	bool promoted; // boolean: tells if a promotion from below
@@ -265,18 +277,16 @@ void cadastrarVacina() {
 	int promo_key, promo_offset; // key promoted from below
 
 	if (btopen()) {
-	    root = getroot();
-	}
-    else {
-	    create_tree();
+		root = getroot();
+	} else {
+		create_tree();
 		root = NIL;
 	}
 
 	promoted = insert(root, key, offset, &promo_rrn, &promo_key, &promo_offset);
-	if (promoted)
+	if (promoted) {
 		root = create_root(promo_key, promo_offset, root, promo_rrn);
-
-    btclose();
+	}
 
 	printf("\n");
 	printf("Dados da vacina:\n");
@@ -321,8 +331,6 @@ void cadastrarCachorro() {
 	system("pause");
 }
 
-// Hash ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 void createHash() {
     int i;
 
@@ -339,12 +347,12 @@ void createHash() {
         fwrite(&bucket,sizeof(bucket),1,hash);
 }
 
-bool invalidHash() {
+bool invalidarHash() {
     fseek(hash,0,2);
     int fileSize = ftell(hash);
     fseek(hash,0,0);
 
-    if ( fileSize != (HASHSIZE*(BUCKETSIZE*2*sizeof(int) + sizeof(int))) )
+    if (fileSize != (HASHSIZE * (BUCKETSIZE * 2 * sizeof(int) + sizeof(int))) )
         return true;
 }
 
@@ -354,25 +362,29 @@ int hashFunction(int key) {
 }
 
 void progressiveOverflow(int key, int RRN, int address, int refAddress, int *count) {
-    fseek(hash,address*sizeof(typeBucket),0);
+    fseek(hash, address * sizeof(typeBucket), 0);
 
     typeBucket bucket;
-    fread(&bucket,sizeof(typeBucket),1,hash);
+    fread(&bucket, sizeof(typeBucket), 1, hash);
 
     switch (bucket.qtd) {
         case 0:
             bucket.qtd++;
             bucket.key[0] = key;
             bucket.RRN[0] = RRN;
-            fseek(hash,-sizeof(typeBucket),1);
-            fwrite(&bucket,sizeof(typeBucket),1,hash);
+
+            fseek(hash, - sizeof(typeBucket), 1);
+            fwrite(&bucket, sizeof(typeBucket), 1, hash);
+
             break;
         case 1:
             bucket.qtd++;
             bucket.key[1] = key;
             bucket.RRN[1] = RRN;
-            fseek(hash,-sizeof(typeBucket),1);
-            fwrite(&bucket,sizeof(typeBucket),1,hash);
+
+            fseek(hash, - sizeof(typeBucket), 1);
+            fwrite(&bucket, sizeof(typeBucket), 1, hash);
+
             break;
         case 2:
             *count = *count + 1;
@@ -380,15 +392,17 @@ void progressiveOverflow(int key, int RRN, int address, int refAddress, int *cou
             printf("Colisao!\n");
 			printf("Tentativa %d\n", *count);
 
-            if ( (address + 1) > (HASHSIZE - 1) )
+            if ((address + 1) > (HASHSIZE - 1)) {
                 address = 0;
-            else
+            } else {
                 address++;
+			}
 
-            if (address != refAddress)
+            if (address != refAddress) {
                 progressiveOverflow(key, RRN, address, refAddress, count);
-            else
+            } else {
                 *count = NIL;
+			}
 
             break;
     }
@@ -467,54 +481,6 @@ bool searchHash(int key) {
 	}
 }
 
-/*
-int main() {
-
-    insertHash(2,2);
-    searchHash(2);
-
-    fclose(hash);
-
-    return 0;
-}
-*/
-
-// B-tree ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-//=========================================================
-//=======================MAIN==============================
-//=========================================================
-
-/*
-int main() {
-    bool promoted; // boolean: tells if a promotion from below
-	int root, // rrn of root page
-	promo_rrn; // rrn promoted from below
-	int promo_key, promo_offset; // key promoted from below
-	int key, offset = 0; // next key to insert in tree
-	if (btopen()) {
-	    root = getroot();
-	}
-    else {
-	    root = create_tree();
-	}
-	while (key != -1) {
-        printf("Digite um numero: ");
-        scanf("%d", &key);
-        printf("Digite um RRN: ");
-        scanf("%d", &offset);
-	    promoted = insert(root, key, offset, &promo_rrn, &promo_key, &promo_offset);
-		if (promoted)
-		    root = create_root(promo_key, promo_offset, root, promo_rrn);
-	}
-
-    printf("  \n *percurso : \n");
-    InOrder(getroot());
-    getch();
-    btclose();
-}
-*/
-
 bool insert(int rrn, int key, int offset, int *promo_r_child, int *promo_key, int *promo_offset) {
     BTPAGE page, // current page
 	newpage; // new page created if split occurs
@@ -523,6 +489,7 @@ bool insert(int rrn, int key, int offset, int *promo_r_child, int *promo_key, in
 	int p_b_rrn = NIL; // rrn promoted from below
 	int p_b_key = key; // key promoted from below
 	int p_b_offset = offset;
+
 	if (rrn == NIL) {
 	    *promo_key = key;
 	    *promo_offset = offset;
@@ -533,32 +500,27 @@ bool insert(int rrn, int key, int offset, int *promo_r_child, int *promo_key, in
 
 	found = search_node (key, &page, &pos);
 	if (found) {
-	    printf ("Chave %d duplicada!\n", key);
+	    printf ("Chave %d duplicada\n", key);
 		return (0);
 	}
 
-	promoted = insert(page.child[pos], key, offset, &p_b_rrn, &p_b_key, &p_b_offset);
-	if (!promoted){
-	    return false;
-	}
-
 	if (page.keycount < MAXKEYS) {
-        printf("key %d rrn %d \n", p_b_key, p_b_offset);
 	    ins_in_page(p_b_key, p_b_offset, p_b_rrn, &page);
 		btwrite(rrn, page);
+		printf("Chave %d inserida com sucesso\n", p_b_key);
 		return false;
-	}
-	else {
+	} else {
  	    split(p_b_key, p_b_offset, p_b_rrn, &page, promo_key, promo_offset, promo_r_child, &newpage);
- 	    printf("key %d rrn %d \n", p_b_key, p_b_offset);
+ 	    printf("Divisao de no\n");
 		btwrite(rrn, page);
 		btwrite(*promo_r_child, newpage);
+		printf("Chave %d inserida com sucesso\n", p_b_key);
 		return true;
 	}
 }
 
 bool btopen() {
-    arqIndice1ArvB = fopen("btree.bin", "r+b");
+    arqIndice1ArvB = fopen("Indice1ArvB.dat", "r+b");
     return (arqIndice1ArvB != NULL);
 }
 
@@ -572,25 +534,18 @@ int getroot() {
 
     fread(&root, sizeof(int), 1, arqIndice1ArvB);
 
-    /*
-    if (root == -4) {
-        printf("Error: Unable to get root. \007\n");
-        return 1; //se nÃ£o der certo retorna 1 by bruno fouz
-	}
-	*/
-
     return (root);
 }
 
 void putroot(int root) {
-	    fseek(arqIndice1ArvB, 0, 0);
-		fwrite(&root, sizeof(int), 1, arqIndice1ArvB);
+	fseek(arqIndice1ArvB, 0, 0);
+	fwrite(&root, sizeof(int), 1, arqIndice1ArvB);
 }
 
 int create_root(int key, int offset, int left, int right) {
     BTPAGE page;
-    int rrn;
-	rrn = getpage();
+    int rrn = getpage();
+
 	pageinit(&page);
 	page.key[0] = key;
 	page.offset[0] = offset;
@@ -603,21 +558,13 @@ int create_root(int key, int offset, int left, int right) {
 }
 
 void create_tree() {
-//	int key, offset;
-	arqIndice1ArvB = fopen("btree.bin", "w+b");
+	arqIndice1ArvB = fopen("Indice1ArvB.dat", "w+b");
 	fclose(arqIndice1ArvB);
 	btopen();
 
 	fseek(arqIndice1ArvB, 0, 0);
 	int n = NIL;
 	fwrite(&n, sizeof(int), 1, arqIndice1ArvB);
-
-//	printf("Digite chave: ");
-//	scanf("%d", &key);
-//	printf("Digite RRN: ");
-//	scanf("%d", &offset);
-	//key = getchar();
-	//key = atoi(key);
 }
 
 int getpage() {
@@ -704,8 +651,6 @@ void split(int key, int offset, int r_child, BTPAGE *p_oldpage, int *promo_key, 
 		p_newpage->key[j] = workkeys[j+1+MINKEYS];
 		p_newpage->offset[j] = workoffset[j+1+MINKEYS];
 		p_newpage->child[j] = workchil[j+1+MINKEYS];
-		printf("--- key: %d \n ", p_newpage->key[j]);
-		printf("--- offset: %d \n", p_newpage->offset[j]);
 		p_oldpage->key[j+MINKEYS] = NIL;
 		p_oldpage->offset[j+MINKEYS] = NIL;
 		p_oldpage->child[j+1+MINKEYS] = NIL;
@@ -717,6 +662,8 @@ void split(int key, int offset, int r_child, BTPAGE *p_oldpage, int *promo_key, 
 	*promo_key = workkeys[MINKEYS];
 	*promo_offset = workoffset[MINKEYS];
 }
+
+// Function para percorrer o indice em Arvore-B  (item 3 do menu)
 
 void percorreVacinas(int root) {
 	struct ap1Struct temporario;
@@ -733,10 +680,9 @@ void percorreVacinas(int root) {
     for (i = 0; i <= (page.keycount + page.keycount); i++) {
         value = pos/2;
 
-        if ( (pos % 2) == 1 ) {
-            printf("keycount: %d \n", page.keycount);
-            printf("chave: %d \n", page.key[value]);
-            printf("rrn: %d \n\n", page.offset[value]);
+        if ((pos % 2) == 1) {
+            printf("Chave: %d \n", page.key[value]);
+            printf("RRN: %d \n\n", page.offset[value]);
 
 			fseek(arqVacinas, page.offset[value], 0);
 			fread(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
@@ -755,10 +701,10 @@ void percorreVacinas(int root) {
 			printf("Nome do cachorro: %s\n", tempCachorro.nomeCachorro);
 			printf("Raca: %s\n\n", tempCachorro.raca);
 			system("pause");
-        }
-        else {
-            if (page.child[value] != NIL)
+        } else {
+            if (page.child[value] != NIL) {
                 percorreVacinas(page.child[value]);
+			}
         }
         pos++;
      }
@@ -772,35 +718,34 @@ int searchRecord(int key, int page_ptr) {
     int pos = 0;
     bool found = false;
 
-/*	if(page_ptr = NIL) {
-		return NIL;
-	} else {*/
-    	while ( (pos < page.keycount) && (!found) ) {
-        	if (key == page.key[pos]) {
-        	    found = true;
-				return page.offset[pos];
-        	}
-        	else if (key < page.key[pos]) {
-            	found = true;
-            	if (page.child[pos] != NIL)
-                	return searchRecord(key, page.child[pos]);
-            	else
-                	return NIL;
-        	}
-        	pos++;
-    	}
+	while ( (pos < page.keycount) && (!found) ) {
+		if (key == page.key[pos]) {
+			found = true;
+			return page.offset[pos];
+		} else if (key < page.key[pos]) {
+			found = true;
+			if (page.child[pos] != NIL) {
+				return searchRecord(key, page.child[pos]);
+			} else {
+				return NIL;
+			}
+		}
 
-    	if (!found) {
-        	if (page.child[pos] != NIL)
-            	return searchRecord(key, page.child[pos]);
-        	else
-            	return NIL;
-    	}
-	/*}*/
+		pos++;
+	}
+
+	if (!found) {
+		if (page.child[pos] != NIL) {
+			return searchRecord(key, page.child[pos]);
+		} else {
+			return NIL;
+		}
+	}
 }
 
-void buscarVacinaHash() {
+// Function para a busca de vacina no indice em Hash (item 4 do menu)
 
+void buscarVacinaHash() {
 	struct ap1Struct temporario;
 	struct ap2Struct tempCachorro;
 	int codigo;
@@ -813,10 +758,9 @@ void buscarVacinaHash() {
 
     int RRN = searchHashR(codigo, &address, address, &count);
 
-	searchHash(codigo);
-	bool lel = searchHash(codigo);
+	bool encontrado = searchHash(codigo);
 
-	if (lel) {
+	if (encontrado) {
 		printf("\n");
 
 		fseek(arqVacinas, RRN, 0);
@@ -841,6 +785,8 @@ void buscarVacinaHash() {
 	}
 }
 
+// Function para a busca de vacina no indice em Arvore-B (item 5 do menu)
+
 void buscarVacinaArvB() {
 	struct ap1Struct temporario;
 	struct ap2Struct tempCachorro;
@@ -851,21 +797,37 @@ void buscarVacinaArvB() {
 
 	RRN = searchRecord(codigo, getroot());
 
-	fseek(arqVacinas, RRN, 0);
-	fread(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
+	int page_ptr = getroot();
+	BTPAGE page;
+	btread(page_ptr, &page);
 
-	printf("Dados da vacina:\n");
-	printf("Codigo da vacina: %d\n", temporario.codControle);
-	printf("Nome da vacina: %s\n", temporario.nomeVacina);
-	printf("Data da vacinacao: %s\n", temporario.dataVacina);
-	printf("Responsavel pela aplicacao: %s\n\n", temporario.respAplic);
+	int pos = 0;
+	bool found = false;
 
-	fseek(arqCachorros, ((temporario.codCachorro) * sizeof(tempCachorro)), 0);
-	fread(&tempCachorro, sizeof(tempCachorro), 1, arqCachorros);
+	if (codigo == page.key[pos]) {
+		found = true;
+		printf("Chave %d encontrada, pagina %d, posicao %d", codigo, page_ptr, pos);
+	}
 
-	printf("Dados do cachorro que recebera a vacina:\n");
-	printf("Codigo do cachorro: %d\n", tempCachorro.codCachorro);
-	printf("Nome do cachorro: %s\n", tempCachorro.nomeCachorro);
-	printf("Raca: %s\n\n", tempCachorro.raca);
-	system("pause");
+	if (RRN != NIL) {
+		fseek(arqVacinas, RRN, 0);
+		fread(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
+
+		printf("Dados da vacina:\n");
+		printf("Codigo da vacina: %d\n", temporario.codControle);
+		printf("Nome da vacina: %s\n", temporario.nomeVacina);
+		printf("Data da vacinacao: %s\n", temporario.dataVacina);
+		printf("Responsavel pela aplicacao: %s\n\n", temporario.respAplic);
+
+		fseek(arqCachorros, ((temporario.codCachorro) * sizeof(tempCachorro)), 0);
+		fread(&tempCachorro, sizeof(tempCachorro), 1, arqCachorros);
+
+		printf("Dados do cachorro que recebera a vacina:\n");
+		printf("Codigo do cachorro: %d\n", tempCachorro.codCachorro);
+		printf("Nome do cachorro: %s\n", tempCachorro.nomeCachorro);
+		printf("Raca: %s\n\n", tempCachorro.raca);
+		system("pause");
+	} else {
+		printf("Chave %d nao encontada\n", codigo);
+	}
 }
