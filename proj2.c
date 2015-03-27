@@ -26,7 +26,7 @@
 extern int root; // rrn of root page
 extern int infd; // file descriptor of input file
 
-// DeclaraÃ§Ãµes de estruturas e descritores de arquivos globais
+// Declara��es de estruturas e descritores de arquivos globais
 
 struct ap1Struct {
 	int codControle, codCachorro;
@@ -59,34 +59,38 @@ FILE *arqCachorros; // Arquivo principal 2 (AP2)
 FILE *hash;
 FILE *arqIndice1ArvB; // file descriptor of btree file
 
-// ProtÃ³tipos
+// Prot�tipos
 
 void menu();
 void abrirArquivos();
-void cadastrarCachorro();
-void cadastrarVacina();
 int procurarCachorro();
+void cadastrarVacina();
+void cadastrarCachorro();
+void createHash();
+int hashFunction();
+void progressiveOverflow();
 void insertHash();
-void buscarVacinaHash();
-void buscarVacinaArvB();
-
-void btclose();
+int searchHashR();
+bool searchHash();
+bool insert();
 bool btopen();
-void btread(int rrn, BTPAGE *page_ptr);
-void btwrite(int rrn, BTPAGE page_ptr);
+void btclose();
+int getroot();
+void putroot(int root);
 int create_root(int key, int rrn, int left, int right);
 void create_tree();
 int getpage();
-int getroot();
-bool insert(int rrn, int key, int offset, int *promo_r_child, int *promo_key, int *promo_offset);
-void ins_in_page(int key,int offset,int r_child, BTPAGE *p_page);
+void btread(int rrn, BTPAGE *page_ptr);
+void btwrite(int rrn, BTPAGE page_ptr);
 void pageinit(BTPAGE *p_page);
-void putroot(int root);
 bool search_node(int key, BTPAGE *p_page, int *pos);
+void ins_in_page(int key,int offset,int r_child, BTPAGE *p_page);
 void split(int key, int offset, int r_child, BTPAGE *p_oldpage, int *promo_key, int *promo_offset, int *promo_r_child, BTPAGE *p_newpage);
 void percorreVacinas(int root);
-
-bool invalidarHash();
+int searchRecord(int key, int page_ptr);
+void buscarVacinaHash();
+void buscarVacinaArvB();
+bool insert(int rrn, int key, int offset, int *promo_r_child, int *promo_key, int *promo_offset);
 void createHash();
 
 // Function principal (main) do programa
@@ -154,7 +158,7 @@ void menu() {
 	} while (!fim);
 }
 
-// Function para abertura e verificaÃ§Ã£o dos arquivos
+// Function para abertura e verifica��o dos arquivos
 
 void abrirArquivos() {
 	arqCachorros = fopen("AP2.dat", "r+b");
@@ -168,17 +172,15 @@ void abrirArquivos() {
 	}
 
 	hash = fopen("Indice1Hash.dat", "r+b");
-    if ((hash == NULL) || invalidarHash()) {
+    if (hash == NULL) {
         createHash();
 	}
 
 	if (!(btopen()))
         create_tree();
-
-
 }
 
-// Function para procurar o cÃ³digo de um cachorro no AP2 e retornar se existe ou nÃ£o
+// Function para procurar o c�digo de um cachorro no AP2 e retornar se existe ou n�o
 
 int procurarCachorro(int codigo) {
 	fseek(arqCachorros, 0, 2);
@@ -331,6 +333,8 @@ void cadastrarCachorro() {
 	system("pause");
 }
 
+// Function para criar a tabela hash
+
 void createHash() {
     int i;
 
@@ -345,15 +349,6 @@ void createHash() {
 
     for (i = 1; i <= HASHSIZE; i++)
         fwrite(&bucket,sizeof(bucket),1,hash);
-}
-
-bool invalidarHash() {
-    fseek(hash,0,2);
-    int fileSize = ftell(hash);
-    fseek(hash,0,0);
-
-    if (fileSize != (HASHSIZE * (BUCKETSIZE * 2 * sizeof(int) + sizeof(int))) )
-        return true;
 }
 
 int hashFunction(int key) {
@@ -700,7 +695,7 @@ void percorreVacinas(int root) {
 			printf("Codigo do cachorro: %d\n", tempCachorro.codCachorro);
 			printf("Nome do cachorro: %s\n", tempCachorro.nomeCachorro);
 			printf("Raca: %s\n\n", tempCachorro.raca);
-			system("pause");
+			
         } else {
             if (page.child[value] != NIL) {
                 percorreVacinas(page.child[value]);
@@ -708,6 +703,7 @@ void percorreVacinas(int root) {
         }
         pos++;
      }
+     system("pause");
 }
 
 int searchRecord(int key, int page_ptr) {
@@ -763,7 +759,6 @@ void buscarVacinaHash() {
 
 	if (encontrado) {
 		printf("\n");
-
 		fseek(arqVacinas, RRN, 0);
 		fread(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
 
@@ -780,10 +775,11 @@ void buscarVacinaHash() {
 		printf("Codigo do cachorro: %d\n", tempCachorro.codCachorro);
 		printf("Nome do cachorro: %s\n", tempCachorro.nomeCachorro);
 		printf("Raca: %s\n\n", tempCachorro.raca);
-		system("pause");
+		
 	} else {
 		printf("\n");
 	}
+	system("pause");
 }
 
 // Function para a busca de vacina no indice em Arvore-B (item 5 do menu)
