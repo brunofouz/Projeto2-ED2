@@ -88,11 +88,13 @@ void percorreVacinas(int root);
 
 bool invalidarHash();
 void createHash();
+void openHash();
 
 // Function principal (main) do programa
 
 int main() {
 	abrirArquivos();
+	btopen();
 
 	menu();
 
@@ -165,11 +167,11 @@ void abrirArquivos() {
 	arqVacinas = fopen("AP1.dat", "r+b");
 	if (arqVacinas == NULL) {
 		arqVacinas = fopen("AP1.dat", "w+b");
-	}
-
-	hash = fopen("Indice1Hash.dat", "r+b");
-    if ((hash == NULL) || invalidarHash()) {
-        createHash();
+		createHash();
+		create_tree();
+	} else {
+		openHash();
+		btopen(); 
 	}
 }
 
@@ -275,13 +277,6 @@ void cadastrarVacina() {
 	int root, // rrn of root page
 	promo_rrn; // rrn promoted from below
 	int promo_key, promo_offset; // key promoted from below
-
-	if (btopen()) {
-		root = getroot();
-	} else {
-		create_tree();
-		root = NIL;
-	}
 
 	promoted = insert(root, key, offset, &promo_rrn, &promo_key, &promo_offset);
 	if (promoted) {
@@ -828,6 +823,12 @@ void buscarVacinaArvB() {
 		printf("Raca: %s\n\n", tempCachorro.raca);
 		system("pause");
 	} else {
-		printf("Chave %d nao encontada\n", codigo);
+		printf("Chave %d nao encontrada\n", codigo);
 	}
+}
+
+void openHash() {
+    hash = fopen("hash.bin","r+b");
+    if ( (hash == NULL) || invalidarHash() )
+        createHash();
 }
