@@ -88,13 +88,11 @@ void percorreVacinas(int root);
 
 bool invalidarHash();
 void createHash();
-void openHash();
 
 // Function principal (main) do programa
 
 int main() {
 	abrirArquivos();
-	btopen();
 
 	menu();
 
@@ -167,12 +165,17 @@ void abrirArquivos() {
 	arqVacinas = fopen("AP1.dat", "r+b");
 	if (arqVacinas == NULL) {
 		arqVacinas = fopen("AP1.dat", "w+b");
-		createHash();
-		create_tree();
-	} else {
-		openHash();
-		btopen(); 
 	}
+
+	hash = fopen("Indice1Hash.dat", "r+b");
+    if ((hash == NULL) || invalidarHash()) {
+        createHash();
+	}
+
+	if (!(btopen()))
+        create_tree();
+
+
 }
 
 // Function para procurar o cÃ³digo de um cachorro no AP2 e retornar se existe ou nÃ£o
@@ -277,6 +280,8 @@ void cadastrarVacina() {
 	int root, // rrn of root page
 	promo_rrn; // rrn promoted from below
 	int promo_key, promo_offset; // key promoted from below
+
+	root = getroot();
 
 	promoted = insert(root, key, offset, &promo_rrn, &promo_key, &promo_offset);
 	if (promoted) {
@@ -716,6 +721,7 @@ int searchRecord(int key, int page_ptr) {
 	while ( (pos < page.keycount) && (!found) ) {
 		if (key == page.key[pos]) {
 			found = true;
+			printf("Chave %d encontrada, pagina %d, posicao %d", key, page_ptr, pos);
 			return page.offset[pos];
 		} else if (key < page.key[pos]) {
 			found = true;
@@ -792,19 +798,8 @@ void buscarVacinaArvB() {
 
 	RRN = searchRecord(codigo, getroot());
 
-	int page_ptr = getroot();
-	BTPAGE page;
-	btread(page_ptr, &page);
-
-	int pos = 0;
-	bool found = false;
-
-	if (codigo == page.key[pos]) {
-		found = true;
-		printf("Chave %d encontrada, pagina %d, posicao %d", codigo, page_ptr, pos);
-	}
-
 	if (RRN != NIL) {
+		printf("\n");
 		fseek(arqVacinas, RRN, 0);
 		fread(&temporario, sizeof(struct ap1Struct), 1, arqVacinas);
 
@@ -823,12 +818,6 @@ void buscarVacinaArvB() {
 		printf("Raca: %s\n\n", tempCachorro.raca);
 		system("pause");
 	} else {
-		printf("Chave %d nao encontrada\n", codigo);
+		printf("Chave %d nao encontada\n", codigo);
 	}
-}
-
-void openHash() {
-    hash = fopen("hash.bin","r+b");
-    if ( (hash == NULL) || invalidarHash() )
-        createHash();
 }
